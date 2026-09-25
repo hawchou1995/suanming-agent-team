@@ -41,7 +41,9 @@ for f in "$SRC_DIR"/*.md; do
   [ -e "$f" ] || continue
   base="$(basename "$f")"
   # 替换占位符（用 | 作分隔符，避免路径里的 / 冲突）
-  sed "s|{{DATAPACK_ROOT}}|$REPL|g" "$f" > "$TARGET_DIR/$base"
+  # 转义 sed 替换串中的 \ & | —— 否则 Windows 路径的 \U/\X 等会被 sed 当转义序列吃掉
+  REPL_ESC="$(printf '%s' "$REPL" | sed -e 's/[\\&|]/\\&/g')"
+  sed "s|{{DATAPACK_ROOT}}|$REPL_ESC|g" "$f" > "$TARGET_DIR/$base"
   printf '  [OK] %-30s %7s bytes\n' "$base" "$(wc -c < "$TARGET_DIR/$base" | tr -d ' ')"
   count=$((count+1))
 done
@@ -55,20 +57,23 @@ echo "  1) 重启宿主，使新 agent 被加载"
 echo "  2) 在 agent 列表选择「神算子周半仙」开始提问"
 echo "  3) 按 docs/VERIFY.md 做验收（尤其 V4 分诊与 V5 断网自包含性）"
 echo
-echo "自检：占位符解析"
-if [ -n "$DATAPACK_ROOT" ]; then
-  if grep -q '{{DATAPACK_ROOT}}' "$TARGET_DIR"/*.md 2>/dev/null; then
-    echo "  [警告] 仍有未替换的占位符："
-    grep -n '{{DATAPACK_ROOT}}' "$TARGET_DIR"/*.md | head -3
-  else
-    echo "  [通过] 占位符已全部替换为：$REPL"
-  fi
+echo "自检："
+if grep -qF '{{DATAPACK_ROOT}}' "$TARGET_DIR"/*.md 2>/dev/null; then
+  echo "  [警告] 存在未替换的占位符 {{DATAPACK_ROOT}}"
 else
-  if grep -nE 'D:\\|Obsidian|/home/|/Users/' "$TARGET_DIR"/*.md 2>/dev/null | grep -v 'NOT_INSTALLED' >/dev/null 2>&1; then
-    echo "  [警告] 发现残留的源码机绝对路径，agent 可能读取失败："
-    grep -nE 'D:\\|Obsidian|/home/|/Users/' "$TARGET_DIR"/*.md | grep -v 'NOT_INSTALLED' | head -5
+  echo "  [通过] 占位符已全部替换"
+fi
+if [ -n "$DATAPACK_ROOT" ]; then
+  if grep -qF "$REPL" "$TARGET_DIR"/*.md 2>/dev/null; then
+    echo "  [通过] 数据包路径已正确写入"
   else
-    echo "  [通过] 无源码机绝对路径残留，已按降级模式安装（功能不受影响）"
+    echo "  [警告] 数据包路径未正确写入（检查路径转义）"
   fi
+fi
+if grep -vF "$REPL" "$TARGET_DIR"/*.md 2>/dev/null | grep -qE 'D:\\|Obsidian|/home/|/Users/'; then
+  echo "  [警告] 发现残留绝对路径（已排除你指定的数据包路径），agent 可能读取失败："
+  grep -vF "$REPL" "$TARGET_DIR"/*.md 2>/dev/null | grep -nE 'D:\\|Obsidian|/home/|/Users/' | head -5
+else
+  echo "  [通过] 无绝对路径残留"
 fi
 echo

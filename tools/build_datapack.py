@@ -9,7 +9,8 @@
 
 用法:
   python tools/build_datapack.py --sources <你的底稿目录> --out <数据包目录>
-  python tools/build_datapack.py --sources ./my_ocr --out ./datapack --assets ./my_images
+  python tools/build_datapack.py --sources ./my_ocr --out ./datapack --assets ./my_images \
+      --bufyuan ./my_kb --tushuo ./my_tushuo
 """
 import argparse, json, os, re, shutil, sys
 
@@ -34,6 +35,8 @@ def main():
     ap.add_argument("--sources", required=True, help="你自己的 OCR 底稿目录（每册一个 .md）")
     ap.add_argument("--out", required=True, help="输出数据包目录")
     ap.add_argument("--assets", default="", help="可选：插图目录，将复制为 assets/")
+    ap.add_argument("--bufyuan", default="", help="可选：补源档目录（形如 <门类>/补源-*.md），复制为 kb/ 下对应文件")
+    ap.add_argument("--tushuo", default="", help="可选：图说档目录（图说-*.md），复制为 图说/")
     args = ap.parse_args()
 
     src, out = os.path.abspath(args.sources), os.path.abspath(args.out)
@@ -93,6 +96,25 @@ def main():
     if args.assets and os.path.isdir(args.assets):
         shutil.copytree(args.assets, os.path.join(out, "assets"), dirs_exist_ok=True)
         print("assets/ 已复制")
+
+    # 5) kb/ 补源档（可选，由使用者提供）
+    if args.bufyuan and os.path.isdir(args.bufyuan):
+        n = 0
+        for r, _d, ff in os.walk(args.bufyuan):
+            for fn in ff:
+                if not fn.endswith(".md"):
+                    continue
+                rel = os.path.relpath(os.path.join(r, fn), args.bufyuan)
+                dst = os.path.join(out, "kb", rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy2(os.path.join(r, fn), dst)
+                n += 1
+        print("kb/ 补源档已复制 %d 个" % n)
+
+    # 6) 图说档（可选，由使用者提供）
+    if args.tushuo and os.path.isdir(args.tushuo):
+        shutil.copytree(args.tushuo, os.path.join(out, "图说"), dirs_exist_ok=True)
+        print("图说/ 已复制")
 
     print("""
 完成。接下来需要 **LLM 参与蒸馏**（本工具不联网、不含模型）：
